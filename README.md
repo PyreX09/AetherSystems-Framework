@@ -6,7 +6,7 @@
 
 It loads your modules in dependency order and gets out of the way.
 
-`MIT` - [License](LICENSE) - [Support the project](FUNDING.yml)
+`MIT` - [License](LICENSE) - [Support the project](https://ko-fi.com/jirawatphundthawandee)
 
 </div>
 
