@@ -33,7 +33,7 @@ That's the whole idea. There are no base classes to extend, no code generation -
 |---|---|
 | **Loader** | Discovers your systems, resolves dependencies, starts them in order. Works on the server and the client. |
 | **Network** | A clean API over Roblox remotes - events and invokes with named handlers, middleware, and built-in rate limiting. |
-| **Motion** | Server-driven tweens that play smoothly on every client (doors, elevators, animations - anything that moves). |
+| **Motion** | The Server acts as the authoritative driver (issuing commands and snapping the final state), while the Clients handle the actual visual interpolation. |
 | **Logger** | Neat, aligned log output with levels and profiling. |
 | **Janitor** | A tiny helper that cleans up connections and instances for you. |
 | **RaycastUtil** | A named cache of reusable `RaycastParams` objects for line-of-sight checks. |
