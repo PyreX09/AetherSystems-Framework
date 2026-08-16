@@ -1,6 +1,6 @@
 # AetherSystems Documentation
 
-Welcome to the AetherSystems docs. Everything here describes the code as it exists today (**V.1.0.0**).
+Welcome to the AetherSystems docs. Everything here describes the code as it exists today (**V.1.1.0**).
 
 ## The guides
 
@@ -38,6 +38,7 @@ Welcome to the AetherSystems docs. Everything here describes the code as it exis
 - **Rate limiting** - [API](API.md#networkconfig-server) - [Spec 4.6](SPEC.md#46-rate-limiting)
 - **Logging** - [API](API.md#logger-shared) - [Spec 8](SPEC.md#8-logger-contract)
 - **Cleanup** - [API](API.md#janitor-shared)
+- **Raycast params** - [API](API.md#raycastutil-shared)
 - **Tracing** - [Diagnostics](DIAGNOSTICS.md#network-trace) - [Spec 7](SPEC.md#7-tracing-debug)
 
 ## Quick glossary

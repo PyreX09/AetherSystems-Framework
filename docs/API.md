@@ -11,6 +11,7 @@
 - [MotionClient (client)](#motionclient-client)
 - [Logger (shared)](#logger-shared)
 - [Janitor (shared)](#janitor-shared)
+- [RaycastUtil (shared)](#raycastutil-shared)
 - [NetworkCore (shared)](#networkcore-shared)
 - [NetworkConfig (server)](#networkconfig-server)
 
@@ -89,6 +90,10 @@ end)
 - Calling `next()` twice warns and is ignored. A throwing middleware logs `MiddlewareError` and stops the chain (the packet is dropped; an invoke returns `nil`).
 - The rate limiter is installed as middleware in `Init`.
 - `Use` returns a function that removes that middleware.
+
+### Trace
+
+- `NetworkServer.Trace(data)` is a pass-through to `NetworkCore.Trace` for server-side callers (see [NetworkCore](#networkcore-shared) and [DIAGNOSTICS.md - Network trace](DIAGNOSTICS.md#network-trace)).
 
 ### Validation
 
@@ -209,9 +214,14 @@ Not called directly - auto-started by `AetherClientLoader` (depends on `Network`
 | `Logger:Fatal(category, ...)` | **Throws.** Calls `error()` internally and halts the calling thread - use only where execution must stop. |
 | `Logger:Debug(category, ...)` | Same layout, gated by `Logger.DebugEnabled` (default `false`). |
 | `Logger:SetDebug(enabled)` | Set debug output on/off (pass `true` or `false`). |
+| `Logger:IsDebugEnabled()` | Returns the current `DebugEnabled` flag. |
 | `Logger:Banner(title)` | Prints a boxed banner (used for the version banner). |
 | `Logger:Begin(name)` / `Logger:End(name)` | Time a named section; `End` logs `[PROFILE] name | (x.xxxx sec)`. |
 | `Logger:TimeAsync(category, fn)` | Runs `fn` in a `task.spawn`, logs `done (x.xxxx sec)` or `failed (x.xxxx sec): err`. |
+| `Logger:GetHistory(opts?)` | Copy of the history buffer (max 1000 entries). `opts` filters: `{ level, category, limit }` - `category` is a case-insensitive substring match. |
+| `Logger:GetCount()` | Number of entries currently in the history buffer. |
+| `Logger:ClearHistory()` | Empties the history buffer. |
+| `Logger:GetEngineHistory()` | Raw `LogService:GetLogHistory()` (engine output). |
 
 - Column widths: time 12, level 6, category 20. Tables print as `[table]`, functions as `[function]`, `nil` as `nil`.
 
@@ -236,6 +246,33 @@ janitor:Destroy()                        -- Cleanup() + janitor locked forever
 ```
 
 Method inference order: `RBXScriptConnection` -> `Disconnect`; `Instance` -> `Destroy`; table with a `Destroy` method -> `Destroy`; functions are called directly. Anything else without an explicit method name asserts.
+
+---
+
+## RaycastUtil (shared)
+
+`require(ReplicatedStorage.AetherShared.Utils.RaycastUtil)` - a named cache of `RaycastParams` objects. Register a set of params once, reuse the same instance everywhere (it is never re-created). It does **not** wrap `workspace:Raycast()` - callers use the native API with the `RaycastParams` object returned by `Get()`.
+
+| Member | Description |
+|---|---|
+| `RaycastUtil.Register(name, config?)` | Registers a new named `RaycastParams`. Throws (`Logger:Fatal`) if `name` isn't a non-empty string or the name is already registered - use `Update()` to modify an existing one. |
+| `RaycastUtil.Update(name, config)` | Mutates the existing `RaycastParams` **in place** - pre-held references stay in sync. Throws if `name` isn't registered. |
+| `RaycastUtil.Get(name)` -> `RaycastParams` | Returns the cached object (same instance every call). Throws if `name` isn't registered. |
+| `RaycastUtil.Remove(name)` | Removes the named entry from the cache. |
+| `RaycastUtil.Exists(name)` -> `boolean` | Whether `name` is currently registered. |
+
+```lua
+RaycastUtil.Register("Player.LOS", {
+    FilterType = Enum.RaycastFilterType.Exclude,
+    FilterDescendantsInstances = {},
+})
+
+local params = RaycastUtil.Get("Player.LOS")          -- same object every time
+local hit = workspace:Raycast(origin, direction, params)
+```
+
+- Recognized config properties: `FilterType`, `FilterDescendantsInstances`, `IgnoreWater`, `CollisionGroup`, `RespectCanCollide`, `BruteForceAllSlow`. Anything else throws (`Logger:Fatal`) at registration/update time.
+- `Update()` + an immediate `Raycast` (no yields between the two) is the intended LOS pattern - see the `Turret` use-case system.
 
 ---
 

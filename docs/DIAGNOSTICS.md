@@ -75,7 +75,7 @@ Each skipped system also logs a `[AetherClientLoader] Skipping X — dependency 
 - `NetworkCore.GetTrace()` / `ClearTrace()` read/reset the buffer.
 - `NetworkCore.Debug = true` prints live lines: `[Aether.Network] SEND DoorOpen Player1`.
 
-### Dev scripts (all in `ServerScriptService`, disabled by default)
+### Dev scripts (all under `ServerScriptService/Test/`, disabled by default)
 
 | Script | What it does |
 |---|---|
@@ -84,6 +84,7 @@ Each skipped system also logs a `[AetherClientLoader] Skipping X — dependency 
 | `TestInspector` | Forces `TraceEnabled = true`, records a `TEST` entry, then prints it. |
 | `JanitorTest` | Manual smoke test of `Janitor` (12 checks: method inference, indexed add/replace, remove, cleanup reuse, destroy lock). Prints `[JanitorTest] N/12 passed`. |
 | `LogHistory` | Prints every entry from `Logger:GetHistory()` (id, timestamp, time, level, category, message). |
+| `RaycastUtilTest` | Regression test for `RaycastUtil` (3 checks + a sanity raycast): `Get()` returns the same object every call, `Update()` mutates pre-held references in place, and native `workspace:Raycast` works with the returned params. Needs `Origin` / `Target` / `Obstruction` parts in its own folder. |
 
 Enable a disabled script (set its `Enabled = true` / uncheck "Disabled") to run it in a playtest, or paste its body into the command bar.
 
@@ -115,3 +116,6 @@ Enable a disabled script (set its `Enabled = true` / uncheck "Disabled") to run 
 | `Invalid instance for tween` | Instance isn't a BasePart or a Model with a PrimaryPart. |
 | `Network service missing` / `... network calls will be no-ops` | `TweenDriver.Init` didn't receive `services.Network`; tween replication is skipped. |
 | `[Doors] Motion system not available` | The example `Doors` system couldn't get `Motion` (from `services` or the loader). |
+| `[Turret] Motion system not available` | The `Turret` use-case system couldn't get `Motion` (from `services` or the loader). |
+| `[Turret] missing Base/Head, skipping` | A `Turret`-tagged model lacks a `Base` or `Head` part (or `Head` isn't a `BasePart`); it is ignored. |
+| `[Turret] <name> acquired target` / `lost target` | A turret started/finished tracking a player; only logged on target transitions. |

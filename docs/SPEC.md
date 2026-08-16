@@ -1,12 +1,12 @@
 # Baseline & Specification
 
-> This is the **baseline** for AetherSystems-Framework **V.1.0.0** - a precise description of the contracts as they exist in the code today. Use it as the reference point for changes: any deviation from these rules is a breaking change unless the spec is updated too.
+> This is the **baseline** for AetherSystems-Framework **V.1.1.0** - a precise description of the contracts as they exist in the code today. Use it as the reference point for changes: any deviation from these rules is a breaking change unless the spec is updated too.
 >
 > Architecture: [ARCHITECTURE.md](ARCHITECTURE.md) - API: [API.md](API.md) - Conventions: [CONVENTIONS.md](CONVENTIONS.md) - Errors & tooling: [DIAGNOSTICS.md](DIAGNOSTICS.md)
 
 ## 1. Version
 
-- Banner: `AetherSystems-Framework V.1.0.0` (printed by `AetherLoader` on boot).
+- Banner: `AetherSystems-Framework V.1.1.0` (printed by `AetherLoader` on boot).
 - Status: in active development; this spec describes the code as it exists now.
 
 ## 2. Module descriptor

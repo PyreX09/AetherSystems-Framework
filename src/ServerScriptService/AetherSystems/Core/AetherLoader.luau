@@ -8,7 +8,7 @@ local AetherLoader = {}
 local _ready = false
 local _bootError = nil
 
-Logger:Banner("AetherSystems-Framework V.1.0.0")
+Logger:Banner("AetherSystems-Framework V.1.1.0")
 Logger:Debug("AetherLoader", "Initializing Systems")
 
 local _ok, _err = pcall(SystemManager.Init)

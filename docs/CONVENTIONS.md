@@ -65,9 +65,9 @@ end
 | Thing | Convention | Example |
 |---|---|---|
 | Service folders | PascalCase, singular | `Network`, `Motion` |
-| System folders | PascalCase, grouped by domain | `Interaction/Doors` |
+| System folders | PascalCase, grouped by domain | `Interaction/Doors`, `Combat/Turret` |
 | Primary module | same as folder name, or `<Name>Client`/`<Name>Server` | `NetworkServer`, `TweenDriver`, `MotionClient` |
-| Registry name | `Descriptor.Name` (or folder name) | `"Network"`, `"Motion"`, `"Doors"` |
+| Registry name | `Descriptor.Name` (or folder name) | `"Network"`, `"Motion"`, `"Doors"`, `"Turret"` |
 | Event names | `Domain.Action` camelCase | `"Combat.Hit"`, `"Motion.Tween"` |
 | Tags | `Domain_Thing` snake_case | `Generic_Door` |
 
@@ -114,13 +114,194 @@ end
 - Rate-limit everything a client can spam; the limiter is middleware, so it covers events and invokes alike.
 - Prefix events owned by the framework with the owning service: `Motion.Tween`, `Motion.Property`.
 
+```lua
+-- ==== server side (any system's Init) ====
+local Network = services.Network
+
+-- events: multi-handler; every On returns its own disconnect fn
+local disconnect = Network.On("Combat.Hit", function(player, data)
+    -- player is ALWAYS first on the server - validate it
+    if not player or not player.Parent then return end
+end)
+-- disconnect()  -- remove only this handler
+
+Network.Fire(player, "Combat.Hit", data)     -- to one player
+Network.FireAll("Announcement.Global", msg)  -- to everyone
+
+-- invokes: ONE handler per event (re-registering warns + replaces)
+Network.Handle("Inventory.Get", function(player, itemId)
+    return makeItem(itemId)  -- single return value
+end)
+
+-- middleware: runs before dispatch, for events AND invokes
+local remove = Network.Use(function(packet, next)
+    if packet.eventName == "Blocked" then return end  -- drop
+    next()                                            -- continue
+end)
+
+-- ==== client side ====
+local Network = services.Network
+
+local disconnect = Network.On("Combat.Hit", function(data)
+    -- data only - NEVER the player
+end)
+Network.FireServer("Combat.Attack", data)
+local item = Network.Invoke("Inventory.Get", itemId)  -- yields; nil on timeout/error
+```
+
 ## Motion conventions
 
 - Prefer `Move` for position/CFrame tweens (it handles Model vs BasePart, snapping, and replication); use `Property` for non-position properties; use `Local` only for server-invisible objects.
 - One active tween per instance - check the `nil` return / handle `Cancel` rather than fighting the registry.
 - If you `Wait = true`, prefer passing `Wait` over manual `task.wait(duration)` loops - `Cancel` unblocks it.
 
+```lua
+local Motion = services.Motion
+
+-- CFrame/position tweens: plays on every client, server snaps when done
+local handle = Motion.Move(door, {
+    Goal     = CFrame.new(0, 10, 0),   -- CFrame or Vector3 (required)
+    Duration = 0.8,                     -- seconds (required)
+    Wait     = false,                   -- block until finished? (default false)
+    Style    = Enum.EasingStyle.Bounce, -- optional, default Sine
+})
+handle.Cancel()  -- interrupt from outside; also unblocks Wait
+
+-- non-position properties, with optional proximity filter (BaseParts, default 100 studs)
+Motion.Property(part, {
+    Property  = "Transparency",
+    Goal      = 1,
+    Duration  = 0.5,
+    Proximity = 150,   -- only players within 150 studs see it
+})
+
+-- server-only tween (invisible to clients); returns the actual Tween
+local tween = Motion.Local(part, { Property = "Transparency", Goal = 0, Duration = 1 })
+
+-- cancel anything on an instance (registry + playback for Local)
+Motion.Cancel(part)
+```
+
+## RaycastUtil conventions
+
+`RaycastUtil` is a named cache of `RaycastParams` - register a set of params once and reuse the same object everywhere. It does **not** wrap `workspace:Raycast()`; you call the native API with the object `Get()` returns.
+
+- **Register once, then reuse.** Call `Register(name, config)` in your system's `Init` (or lazily guarded by `Exists`). `Get(name)` returns the *same* instance on every call - never re-create it per frame.
+- **`Update()` mutates in place.** Pre-held references stay in sync, so keep one reference and `Update` it before each use.
+- **No yields between `Update` and `Raycast`.** The whole point is that the params object is never re-created, so there is no reason to yield between mutating and casting.
+- Only these `RaycastParams` properties are recognized: `FilterType`, `FilterDescendantsInstances`, `IgnoreWater`, `CollisionGroup`, `RespectCanCollide`, `BruteForceAllSlow`. Anything else throws (`Logger:Fatal`) at `Register`/`Update` time - it catches typos before they silently break a raycast.
+- Name params `Domain.Purpose` (e.g. `"Turret.LOS"`) to avoid collisions with other systems.
+
+```lua
+local RaycastUtil = require(game:GetService("ReplicatedStorage").AetherShared.Utils.RaycastUtil)
+
+-- in Init: register once
+if not RaycastUtil.Exists("Enemy.LOS") then
+    RaycastUtil.Register("Enemy.LOS", {
+        FilterType = Enum.RaycastFilterType.Exclude,
+        FilterDescendantsInstances = {},
+    })
+end
+
+-- per scan: Update + immediate Raycast, no yields between
+RaycastUtil.Update("Enemy.LOS", { FilterDescendantsInstances = { enemyModel, character } })
+local hit = workspace:Raycast(origin, direction, RaycastUtil.Get("Enemy.LOS"))
+```
+
+## Logger conventions
+
+`Logger` is the single way to emit output - fixed-width `[time][level][category]` lines. Every system logs through it with its own category (usually the registry name).
+
+- **Pick a category and stick to it.** Use the registry name (`"Turret"`, `"Doors"`) or a subsystem name (`"Resolver"`, `"RateLimit"`) - it's the column everyone reads to find your lines.
+- **Levels are ordered:** `Debug` (gated, default off) < `Info` < `Warn` < `Error` (warns, does **not** throw) < `Fatal` (**throws**). Use `Error` where you want visibility without halting; use `Fatal` only where execution must stop, wrapped in `pcall` if you need to recover.
+- **Multiple values join with ` | `** - pass them as separate args, don't pre-format into one string. Tables print as `[table]`, functions as `[function]`, `nil` as `nil`.
+- **`Debug` is invisible by default.** Gate noisy per-frame output behind `Logger:Debug` and flip `Logger:SetDebug(true)` during development.
+- **Profile with `Begin`/`End` or `TimeAsync`** instead of hand-rolling `os.clock` prints.
+
+```lua
+local Logger = require(game:GetService("ReplicatedStorage").AetherShared.Utils.Logger)
+
+local TAG = "Shop"
+
+Logger:Info(TAG, "Item purchased", itemId, player.Name)   -- multiple args join with |
+Logger:Warn(TAG, "Item not found", itemId)
+Logger:Error(TAG, "Purchase failed", reason)              -- warns, continues
+Logger:Debug(TAG, "detailed state", state)                -- hidden unless SetDebug(true)
+Logger:SetDebug(true)                                     -- enable Debug lines
+
+-- Fatal throws - only where execution must stop
+if not item then
+    Logger:Fatal(TAG, "Item table is nil")
+end
+
+-- profiling
+Logger:Begin("SellFlow")
+-- ...work...
+Logger:End("SellFlow")                       -- [PROFILE] SellFlow | (0.0042 sec)
+Logger:TimeAsync("Shop", function() ... end) -- runs in a task.spawn, logs duration
+
+-- history (used by the LogHistory dev tool)
+local recent = Logger:GetHistory({ level = "WARN", category = "shop", limit = 20 })
+```
+
+## Janitor conventions
+
+`Janitor` is the cleanup tracker - hand it connections and instances and it disposes of them when you're done, instead of scattering `Disconnect`/`Destroy` calls.
+
+- **Create one per tracked object**, not per system. A turret, a door, a UI panel - each gets its own janitor (see the `Turret` use case: one janitor per model, destroyed when the model leaves).
+- **Method inference:** `RBXScriptConnection` -> `Disconnect`; `Instance` -> `Destroy`; table with a `Destroy` method -> `Destroy`; functions are called directly. Anything else needs an explicit method name or it asserts.
+- **Use the index parameter for replaceable slots** - re-`Add`ing the same index cleans the old occupant first (e.g. swap a highlight connection without leaking the old one).
+- **`Cleanup` keeps the janitor usable; `Destroy` locks it forever.** Prefer `Destroy` when the owning object is going away.
+
+```lua
+local Janitor = require(game:GetService("ReplicatedStorage").AetherShared.Utils.Janitor)
+
+local janitor = Janitor.new()
+
+janitor:Add(connection)                  -- RBXScriptConnection -> infers Disconnect()
+janitor:Add(part)                        -- Instance -> infers Destroy()
+janitor:Add(tbl, "Stop")                 -- explicit method name
+janitor:Add(function() ... end)          -- called directly
+
+-- indexed: replacing "highlight" cleans the old one first
+janitor:Add(part, "Destroy", "highlight")
+janitor:Add(part2, "Destroy", "highlight")  -- part is cleaned automatically
+
+janitor:Remove("highlight")              -- clean + drop one indexed item
+janitor:Cleanup()                        -- clean everything; janitor stays usable
+janitor:Destroy()                        -- Cleanup() + janitor locked forever
+```
+
+## Use case: the Turret system (`Systems/Combat/Turret`)
+
+`Turret` is a **use case / test** of the framework pieces working together - a CollectionService-tagged model driven by `RaycastUtil` + `Motion` + `Janitor` + `Logger`. Read it to see each convention above in action, not as production code to copy wholesale.
+
+**Setup in Studio:** a `Model` tagged `"Turret"` containing a `Base` part and a `Head` `BasePart`. Tag it at runtime or in Studio:
+
+```lua
+CollectionService:AddTag(turretModel, "Turret")
+```
+
+**How it works (read `Turret.luau` for the full implementation):**
+
+1. **Descriptor** - `Name = "Turret"`, `Dependencies = { "Motion" }`. `Init` takes `Motion` from `services` (with a `Loader.Get("Motion")` fallback) and `Logger:Fatal`s if it's missing.
+2. **LOS params** - registers `"Turret.LOS"` once (`RaycastUtil.Register`), then per scan does `Update` (excluding the turret + candidate character) followed by an immediate `workspace:Raycast`.
+3. **Targeting** - scans players every `0.3s` (`SCAN_INTERVAL`), picks the nearest `HumanoidRootPart` within `60` studs (`RANGE`) with a clear ray, and rotates the `Head` with `Motion.Move` using `CFrame.lookAt` (y-axis locked).
+4. **Cleanup** - each turret gets a `Janitor`; a cooperative `scanning` flag stops the loop and an `AncestryChanged` connection destroys the janitor when the model leaves the game.
+5. **Logging** - `Logger:Info` on target acquired/lost transitions and a boot summary (`initialized, tracking N turret(s)`).
+
+```lua
+-- the shape to copy for your own tagged, tracked systems:
+function Module.Init(services)
+    local Motion = services.Motion  -- or Loader.Get("Motion")
+    if not Motion then
+        Logger:Fatal("Turret", "Motion system not available")
+    end
+    -- register params, connect GetTagged/GetInstanceAddedSignal, return a handle
+end
+```
+
 ## Testing / dev tooling
 
-- Dev/test scripts live in `ServerScriptService` at the top level and are **disabled by default** (`JanitorTest`, `NetworkInspector`, `TestInspector`, `LogHistory`). Follow that pattern for your own scratch scripts.
-- Document every `CollectionService` tag you introduce in `ReplicatedStorage/AetherShared/TagList` (a `Configuration` named after the tag, e.g. `Generic_Door`).
+- Dev/test scripts live in `ServerScriptService/Test/` and are **disabled by default** (`JanitorTest`, `LogHistory`, `NetworkInspector`, `TestInspector`, `RaycastUtilTest`). Follow that pattern for your own scratch scripts.
+- Document every `CollectionService` tag you introduce in `ReplicatedStorage/AetherShared/TagList` (a `Configuration` named after the tag, e.g. `Generic_Door`, `Turret`).

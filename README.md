@@ -6,7 +6,7 @@
 
 It loads your modules in dependency order and gets out of the way.
 
-`MIT` - [License](LICENSE) - [Support the project](https://ko-fi.com/jirawatphundthawandee)
+`MIT` - [License](LICENSE) - [Support the project](https://ko-fi.com/jirawatphundthawandee) - [DevForum post](https://devforum.roblox.com/t/open-source-aethersystems-a-minimalist-module-network-framework/4813570/1)
 
 </div>
 
@@ -36,8 +36,9 @@ That's the whole idea. There are no base classes to extend, no code generation -
 | **Motion** | Server-driven tweens that play smoothly on every client (doors, elevators, animations - anything that moves). |
 | **Logger** | Neat, aligned log output with levels and profiling. |
 | **Janitor** | A tiny helper that cleans up connections and instances for you. |
+| **RaycastUtil** | A named cache of reusable `RaycastParams` objects for line-of-sight checks. |
 
-Everything else is *your* game code. There's a working example - push doors - to copy from.
+Everything else is *your* game code. There are two reference systems to study: push doors (a simple `Motion` use case) and a tracking turret (a use case that exercises `RaycastUtil` + `Motion` + `Janitor` + `Logger` together).
 
 ## Quick start
 
@@ -96,7 +97,7 @@ ServerScriptService/AetherSystems
 
 ReplicatedStorage/AetherShared
 |-- Event/Network/  the two remotes every message goes through
-|-- Utils/          NetworkCore, Logger, Janitor (shared by server & client)
+|-- Utils/          NetworkCore, Logger, Janitor, RaycastUtil (shared by server & client)
 `-- TagList/        documented CollectionService tags
 
 StarterPlayer/StarterPlayerScripts/AetherClient
@@ -135,6 +136,37 @@ local Logger = require(game:GetService("ReplicatedStorage").AetherShared.Utils.L
 Logger:Info("Shop", "Item purchased", itemId)
 ```
 
+**Reuse RaycastParams instead of rebuilding them (RaycastUtil):**
+
+```lua
+local RaycastUtil = require(game:GetService("ReplicatedStorage").AetherShared.Utils.RaycastUtil)
+
+-- register once; Get() always returns the same RaycastParams object
+RaycastUtil.Register("Enemy.LOS", {
+    FilterType = Enum.RaycastFilterType.Exclude,
+    FilterDescendantsInstances = {},
+})
+
+-- Update() mutates it in place, so pre-held references stay in sync.
+-- Call Raycast immediately after - no yields between the two.
+RaycastUtil.Update("Enemy.LOS", { FilterDescendantsInstances = { character } })
+local hit = workspace:Raycast(origin, direction, RaycastUtil.Get("Enemy.LOS"))
+```
+
+**A tracking turret (server, the `Combat/Turret` use case):**
+
+```lua
+-- Tag a Model with CollectionService tag "Turret". Give it a "Base" part
+-- and a "Head" BasePart - the Head rotates to face the nearest player
+-- within 60 studs that it has a clear line of sight to.
+CollectionService:AddTag(turretModel, "Turret")
+
+-- The system in ServerScriptService/AetherSystems/Systems/Combat/Turret
+-- is a use case that tests the framework systems working together:
+-- RaycastUtil for LOS checks, Motion.Move to rotate the Head toward the
+-- target, Janitor for per-turret cleanup, Logger for transitions.
+```
+
 ## Rules of the road
 
 - **Fail loud, fail early.** On the server, a missing dependency or a circular dependency stops boot and the error tells you exactly which system and which dependency caused it. On the client, broken systems are skipped and reported - your game still starts.
@@ -152,10 +184,11 @@ The docs are split into focused guides. Start at the [**docs index**](docs/READM
 | [**Conventions**](docs/CONVENTIONS.md) | How to write systems that fit in - naming, module contract, style |
 | [**Spec & Baseline**](docs/SPEC.md) | The precise contracts: dependency rules, network protocol, rate limiting, motion protocol |
 | [**Diagnostics**](docs/DIAGNOSTICS.md) | Every error message, the boot summary, tracing, and dev tools |
+| [**Releases**](RELEASES.md) | Changelog for every version (V.1.1.0 and up) |
 
 ## Status
 
-In active development. This README and the docs describe the code as it exists right now (`V.1.0.0`).
+In active development. This README and the docs describe the code as it exists right now (`V.1.1.0`).
 
 ---
 

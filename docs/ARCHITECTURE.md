@@ -11,7 +11,7 @@ AetherSystems is a **module loader + a small set of shared services** for Roblox
 2. **Resolution** - orders them by their declared dependencies and fails loudly on mistakes.
 3. **Initialization** - calls `Init(services)` on each system in that order, injecting the already-initialized services.
 
-On top of the loader sit two built-in services - **Network** (remote transport) and **Motion** (server-driven tweens) - plus shared utilities (**Logger**, **Janitor**, **NetworkCore**). Everything else is your game code.
+On top of the loader sit two built-in services - **Network** (remote transport) and **Motion** (server-driven tweens) - plus shared utilities (**Logger**, **Janitor**, **RaycastUtil**, **NetworkCore**). Everything else is your game code.
 
 The framework lives in three containers:
 
@@ -41,7 +41,8 @@ ServerScriptService/AetherSystems
 |       |-- TweenDriver (ModuleScript)     # server-side tween API
 |       `-- MotionRegistry                 # one active tween per instance
 |-- Systems/                           # your actual game features
-|   `-- Interaction/Doors/Generic       # example system (Generic_Door tag)
+|   |-- Interaction/Doors/Generic       # reference system (Generic_Door tag)
+|   `-- Combat/Turret                   # use case: tests the services together (Turret tag)
 |-- Config/
 |   `-- NetworkConfig (ModuleScript)    # rate limit settings
 `-- Events/                            # runtime BindableEvents (RateLimit.Blocked)
@@ -53,7 +54,8 @@ ReplicatedStorage/AetherShared
 |-- Utils/
 |   |-- NetworkCore (ModuleScript)      # shared transport core (server + client)
 |   |-- Logger (ModuleScript)
-|   `-- Janitor (ModuleScript)
+|   |-- Janitor (ModuleScript)
+|   `-- RaycastUtil (ModuleScript)      # named cache of reusable RaycastParams
 |-- TagList/                            # documented CollectionService tags
 `-- Math/                               # reserved (empty)
 
@@ -66,8 +68,8 @@ StarterPlayer/StarterPlayerScripts/AetherClient
 `-- Systems/                               # client game features
 ```
 
-Developer-only scripts also live in `ServerScriptService` and are **disabled by default**:
-`JanitorTest`, `NetworkInspector`, `TestInspector`, `LogHistory` (see [DIAGNOSTICS.md](DIAGNOSTICS.md)).
+Developer-only scripts live in `ServerScriptService/Test/` and are **disabled by default**:
+`JanitorTest`, `LogHistory`, `NetworkInspector`, `TestInspector`, and the `RaycastUtilTest` regression script (see [DIAGNOSTICS.md](DIAGNOSTICS.md)).
 
 ## Component responsibilities
 
@@ -93,6 +95,7 @@ Developer-only scripts also live in `ServerScriptService` and are **disabled by 
 - **`NetworkCore`** - the transport core used by both `NetworkServer` and `NetworkClient`. Owns the two remotes, event-name validation, the multi-handler/invoke registries (each handler runs under its own `pcall`), and the trace buffer for debugging. It contains no server-only or client-only logic.
 - **`Logger`** - fixed-width column logger. See [API.md](API.md).
 - **`Janitor`** - cleanup tracker with method inference (`Disconnect` / `Destroy` / explicit name / callable). See [API.md](API.md).
+- **`RaycastUtil`** - a named cache of reusable `RaycastParams` (`Register`/`Update`/`Get`/`Remove`/`Exists`). `Get()` always returns the same object, and `Update()` mutates it in place so pre-held references stay in sync - the LOS pattern exercised by the `Turret` use case. See [API.md](API.md).
 
 ### Client side
 
